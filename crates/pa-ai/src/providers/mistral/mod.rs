@@ -22,6 +22,9 @@ use serde_json::{json, Value};
 mod convert;
 mod stream;
 
+#[cfg(test)]
+mod wire_tests;
+
 pub use stream::stream_mistral;
 
 pub const API_MISTRAL_CONVERSATIONS: &str = "mistral-conversations";
@@ -131,6 +134,9 @@ fn uses_reasoning_effort(model: &Model) -> bool {
     model.id == "mistral-small-2603"
         || model.id == "mistral-small-latest"
         || model.id == "mistral-medium-3.5"
+        || model.id == "mistral-large-4"
+        || model.id == "mistral-large-4-0"
+        || model.id == "mistral-large-4-unrestricted"
 }
 
 fn uses_prompt_mode_reasoning(model: &Model) -> bool {
