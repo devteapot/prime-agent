@@ -22,6 +22,9 @@ use serde_json::{json, Value};
 mod convert;
 mod stream;
 
+#[cfg(test)]
+mod wire_tests;
+
 pub use stream::stream_mistral;
 
 pub const API_MISTRAL_CONVERSATIONS: &str = "mistral-conversations";
@@ -30,14 +33,18 @@ pub const API_MISTRAL_CONVERSATIONS: &str = "mistral-conversations";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MistralReasoningEffort {
     None,
+    Low,
     High,
+    Max,
 }
 
 impl MistralReasoningEffort {
     pub fn as_str(self) -> &'static str {
         match self {
             MistralReasoningEffort::None => "none",
+            MistralReasoningEffort::Low => "low",
             MistralReasoningEffort::High => "high",
+            MistralReasoningEffort::Max => "max",
         }
     }
 }
@@ -127,10 +134,18 @@ pub(crate) fn build_request_headers(
     headers
 }
 
+fn is_glm_5_3(model: &Model) -> bool {
+    matches!(
+        model.id.as_str(),
+        "zai-glm-5-3" | "zai-glm-5" | "zai-glm-latest"
+    )
+}
+
 fn uses_reasoning_effort(model: &Model) -> bool {
     model.id == "mistral-small-2603"
         || model.id == "mistral-small-latest"
         || model.id == "mistral-medium-3.5"
+        || is_glm_5_3(model)
 }
 
 fn uses_prompt_mode_reasoning(model: &Model) -> bool {
@@ -145,6 +160,13 @@ fn map_reasoning_effort(model: &Model, level: ModelThinkingLevel) -> MistralReas
         .and_then(std::clone::Clone::clone);
     match mapped.as_deref() {
         Some("none") => MistralReasoningEffort::None,
+        Some("low") if is_glm_5_3(model) => MistralReasoningEffort::Low,
+        Some("max") if is_glm_5_3(model) => MistralReasoningEffort::Max,
+        None if is_glm_5_3(model) => match level {
+            ModelThinkingLevel::Low => MistralReasoningEffort::Low,
+            ModelThinkingLevel::Max => MistralReasoningEffort::Max,
+            _ => MistralReasoningEffort::High,
+        },
         _ => MistralReasoningEffort::High,
     }
 }
@@ -277,6 +299,22 @@ mod tests {
         assert_eq!(
             map_reasoning_effort(&model, ModelThinkingLevel::High),
             MistralReasoningEffort::High
+        );
+        assert_eq!(
+            map_reasoning_effort(&model, ModelThinkingLevel::Low),
+            MistralReasoningEffort::High
+        );
+        let glm = Model {
+            id: "zai-glm-5-3".into(),
+            ..model
+        };
+        assert_eq!(
+            map_reasoning_effort(&glm, ModelThinkingLevel::Low),
+            MistralReasoningEffort::Low
+        );
+        assert_eq!(
+            map_reasoning_effort(&glm, ModelThinkingLevel::Max),
+            MistralReasoningEffort::Max
         );
     }
 }
